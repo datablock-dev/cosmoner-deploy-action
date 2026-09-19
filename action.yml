@@ -1,0 +1,112 @@
+name: Cosmoner
+description: Deploy an image app, or upload a folder to a web hosting site, on Cosmoner.
+author: Cosmoner
+branding:
+  icon: upload-cloud
+  color: purple
+
+inputs:
+  command:
+    description: "`deploy` to roll an image app onto a new image, `upload` to copy a folder to a web hosting site over SFTP."
+    required: true
+  api-key:
+    description: "Cosmoner API key. deploy needs apps:read and apps:write; upload needs hosting:read."
+    required: true
+  project-id:
+    description: Project the app or site is in.
+    required: true
+
+  app:
+    description: "deploy: the app's name or id."
+    required: false
+  tag:
+    description: "deploy: image tag to deploy from the app's repository."
+    required: false
+  digest:
+    description: "deploy: exact image digest, sha256:<64 hex>. Use instead of tag."
+    required: false
+  wait:
+    description: "deploy: wait for the rollout to go live."
+    required: false
+    default: "true"
+  timeout:
+    description: "deploy: seconds to wait for the rollout."
+    required: false
+    default: "600"
+
+  site:
+    description: "upload: the hosting site's name or id."
+    required: false
+  path:
+    description: "upload: local folder whose contents are uploaded."
+    required: false
+  remote-path:
+    description: "upload: folder on the site to upload into. Defaults to the one the site's own hostname serves."
+    required: false
+  delete:
+    description: "upload: remove files on the site that are not in path."
+    required: false
+    default: "false"
+  dry-run:
+    description: "upload: list what would change without changing it."
+    required: false
+    default: "false"
+  host-key:
+    description: "upload: SHA256 fingerprint(s) of the SFTP gateway's host key, comma-separated. A server presenting another key is refused."
+    required: false
+
+  cli-version:
+    description: "@cosmoner/cli version or range to run."
+    required: false
+    default: "0.3"
+
+runs:
+  using: composite
+  steps:
+    - name: Run cosmoner ${{ inputs.command }}
+      shell: bash
+      # Every input reaches the script through the environment, never through
+      # ${{ }} inside `run`, which would splice it into the script as code.
+      env:
+        COSMONER_API_KEY: ${{ inputs.api-key }}
+        COSMONER_PROJECT_ID: ${{ inputs.project-id }}
+        COSMONER_SFTP_HOST_KEY: ${{ inputs.host-key }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_APP: ${{ inputs.app }}
+        INPUT_TAG: ${{ inputs.tag }}
+        INPUT_DIGEST: ${{ inputs.digest }}
+        INPUT_WAIT: ${{ inputs.wait }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_SITE: ${{ inputs.site }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_REMOTE_PATH: ${{ inputs.remote-path }}
+        INPUT_DELETE: ${{ inputs.delete }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+      run: |
+        set -euo pipefail
+
+        fail() { echo "::error::$1"; exit 2; }
+
+        case "$INPUT_COMMAND" in
+          deploy)
+            [ -n "$INPUT_APP" ] || fail "deploy needs the app input"
+            args=(deploy "$INPUT_APP" --timeout "$INPUT_TIMEOUT")
+            [ -z "$INPUT_TAG" ] || args+=(--tag "$INPUT_TAG")
+            [ -z "$INPUT_DIGEST" ] || args+=(--digest "$INPUT_DIGEST")
+            [ "$INPUT_WAIT" = "true" ] || args+=(--no-wait)
+            ;;
+          upload)
+            [ -n "$INPUT_SITE" ] || fail "upload needs the site input"
+            [ -n "$INPUT_PATH" ] || fail "upload needs the path input"
+            args=(upload "$INPUT_SITE" "$INPUT_PATH")
+            [ -z "$INPUT_REMOTE_PATH" ] || args+=(--remote "$INPUT_REMOTE_PATH")
+            [ "$INPUT_DELETE" != "true" ] || args+=(--delete)
+            [ "$INPUT_DRY_RUN" != "true" ] || args+=(--dry-run)
+            ;;
+          *)
+            fail "command must be deploy or upload, not '$INPUT_COMMAND'"
+            ;;
+        esac
+
+        npx --yes "@cosmoner/cli@$INPUT_CLI_VERSION" "${args[@]}"

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  # Runs the action without credentials, so only its own input checks can be
+  # exercised: each case must fail before the CLI is reached.
+  usage:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { command: nope }
+          - { command: deploy }
+          - { command: upload, site: my-site }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - id: run
+        continue-on-error: true
+        uses: ./
+        with:
+          command: ${{ matrix.command }}
+          api-key: unused
+          project-id: unused
+          site: ${{ matrix.site }}
+
+      - name: Expect the action to have refused
+        if: steps.run.outcome != 'failure'
+        run: exit 1
