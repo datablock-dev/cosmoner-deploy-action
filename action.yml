@@ -1,0 +1,66 @@
+name: Cosmoner Deploy
+description: Deploy an image app on Cosmoner and wait for it to go live.
+author: Cosmoner
+branding:
+  icon: upload-cloud
+  color: purple
+
+inputs:
+  api-key:
+    description: Cosmoner API key with apps:read and apps:write.
+    required: true
+  project-id:
+    description: Project the app is in.
+    required: true
+  app:
+    description: The app's name or id.
+    required: true
+  tag:
+    description: Image tag to deploy from the app's repository.
+    required: false
+  digest:
+    description: Exact image digest, sha256:<64 hex>. Use instead of tag.
+    required: false
+  wait:
+    description: Wait for the rollout to go live.
+    required: false
+    default: "true"
+  timeout:
+    description: Seconds to wait for the rollout.
+    required: false
+    default: "600"
+  cli-version:
+    description: "@cosmoner/cli version or range to run."
+    required: false
+    default: "0.3"
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy ${{ inputs.app }}
+      shell: bash
+      # Every input reaches the script through the environment, never through
+      # ${{ }} inside `run`, which would splice it into the script as code.
+      env:
+        COSMONER_API_KEY: ${{ inputs.api-key }}
+        COSMONER_PROJECT_ID: ${{ inputs.project-id }}
+        INPUT_APP: ${{ inputs.app }}
+        INPUT_TAG: ${{ inputs.tag }}
+        INPUT_DIGEST: ${{ inputs.digest }}
+        INPUT_WAIT: ${{ inputs.wait }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$INPUT_APP" ]; then
+          echo "::error::The app input is required"
+          exit 2
+        fi
+
+        args=(deploy "$INPUT_APP" --timeout "$INPUT_TIMEOUT")
+        [ -z "$INPUT_TAG" ] || args+=(--tag "$INPUT_TAG")
+        [ -z "$INPUT_DIGEST" ] || args+=(--digest "$INPUT_DIGEST")
+        [ "$INPUT_WAIT" = "true" ] || args+=(--no-wait)
+
+        npx --yes "@cosmoner/cli@$INPUT_CLI_VERSION" "${args[@]}"

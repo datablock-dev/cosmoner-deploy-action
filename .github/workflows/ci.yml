@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  # Runs the action without credentials, so only its own input check can be
+  # exercised: it must fail before the CLI is reached.
+  usage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - id: run
+        continue-on-error: true
+        uses: ./
+        with:
+          api-key: unused
+          project-id: unused
+          app: ""
+
+      - name: Expect the action to have refused
+        if: steps.run.outcome != 'failure'
+        run: exit 1
